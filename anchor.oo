@@ -10,4 +10,7 @@
 //   3. Re-export render formatting subsystem.
 //   4. Re-export Model Context Protocol (MCP) IPC subsystem.
 
+import "core/anchor.oo";
+import "render/anchor.oo";
+import "ipc/anchor.oo";
 import "main.oo";

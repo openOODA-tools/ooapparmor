@@ -1,0 +1,70 @@
+// # ooapparmor Options - Command Line Flags and Operational Configuration
+//
+// Logline: Decodes command line arguments into AppArmor profile generator modes.
+//
+// Setup: Pure value type and parser. Zero ambient authority.
+//
+// Beats:
+//   1. Define AppArmorOpts struct holding action mode, parameters, and flags.
+//   2. Provide safe default initializer.
+//   3. Parse argument vector into validated AppArmorOpts model.
+
+pub type AppArmorOpts = struct {
+    action: String,
+    tool_name: String,
+    bin_path: String,
+    caps_str: String,
+    profile_file: String,
+    json_mode: Bool,
+    mcp_mode: Bool,
+    help_mode: Bool,
+    version_mode: Bool,
+    error_msg: String
+};
+
+pub fn apparmor_opts_default() -> AppArmorOpts {
+    return AppArmorOpts {
+        action: "",
+        tool_name: "",
+        bin_path: "",
+        caps_str: "FsRead,Process,Env,Mcp",
+        profile_file: "",
+        json_mode: false,
+        mcp_mode: false,
+        help_mode: false,
+        version_mode: false,
+        error_msg: ""
+    };
+}
+
+pub fn parse_apparmor_args(args: List[String]) -> AppArmorOpts {
+    let mut opts: AppArmorOpts = apparmor_opts_default();
+    let n: Int = list_len(args);
+    let mut i: Int = 0;
+    while i < n {
+        let arg: String = list_get(args, i);
+        if arg == "-h" || arg == "--help" {
+            opts.help_mode = true;
+            return opts;
+        } else if arg == "-v" || arg == "--version" {
+            opts.version_mode = true;
+            return opts;
+        } else if arg == "--mcp" {
+            opts.mcp_mode = true;
+        } else if arg == "--json" {
+            opts.json_mode = true;
+        } else if arg == "--bin" {
+            i = i + 1;
+            if i < n { opts.bin_path = list_get(args, i); }
+        } else if arg == "--caps" {
+            i = i + 1;
+            if i < n { opts.caps_str = list_get(args, i); }
+        } else if opts.action == "" && !str_starts_with(arg, "-") {
+            opts.action = arg;
+        } else if opts.tool_name == "" && !str_starts_with(arg, "-") {
+            opts.tool_name = arg;
+        }
+        i = i + 1;
+    }
+    return opts;
+}

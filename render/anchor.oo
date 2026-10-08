@@ -1,0 +1,11 @@
+// # ooapparmor Render Subsystem Anchor
+//
+// Logline: Re-exports theme resolution and terminal color styling primitives.
+//
+// Setup: Pure shim re-exporting rendering components.
+//
+// Beats:
+//   1. Re-export ANSI escape and reset formatting helpers.
+//   2. Re-export oote theme discovery and audit styling.
+
+import "render_theme.oo";

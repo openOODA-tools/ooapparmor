@@ -1,0 +1,9 @@
+Package: ooapparmor
+Version: 0.2.0-1
+Section: utils
+Priority: optional
+Architecture: amd64
+Maintainer: openOODA-tools <ops@openooda.org>
+Description: AppArmor security profile generator for sovereign utilities
+ A sovereign AppArmor profile generator and auditor written in pure openOODA,
+ enforcing zero ambient authority, capability confinement, and an MCP stdio server.

@@ -1,0 +1,14 @@
+// # ooapparmor IPC Subsystem Anchor
+//
+// Logline: Re-exports JSON field parser, command options, and MCP server engine.
+//
+// Setup: Pure shim re-exporting IPC and protocol integration modules.
+//
+// Beats:
+//   1. Re-export JSON field decoding and string escaping primitives.
+//   2. Re-export AppArmorOpts argument parser.
+//   3. Re-export run_mcp_server stdio driver.
+
+import "json_field.oo";
+import "apparmor_opts.oo";
+import "mcp_serve.oo";

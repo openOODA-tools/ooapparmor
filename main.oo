@@ -1,52 +1,128 @@
-// # ooapparmor Main Entry Point
+// # ooapparmor Entry Point - AppArmor Security Profile Manager
 //
-// Logline: Generates and loads AppArmor security profiles for individual utilities.
+// Logline: Argument gate, profile generator, and capability confinement engine.
 //
-// Setup: Demands explicit capability tokens and standard argument list.
+// Setup: Requires FsReadCap, ProcessCap, EnvCap. Operates with zero ambient authority.
 //
 // Beats:
-//   1. Parse command-line options and dispatch --help, --version, or --mcp.
-//   2. Execute capability-bounded ooapparmor operations.
-//   3. Format and output structured results to standard output.
+//   1. Handle --help, --version, and --mcp early without side effects.
+//   2. Parse security capability tokens and target executable paths.
+//   3. Emit synthesized AppArmor profile or execute containment audit.
+
+import "core/anchor.oo";
+import "render/anchor.oo";
+import "ipc/anchor.oo";
 
 fn render_help() -> String {
-    return "ooapparmor 0.1.0 (openOODA sovereign agent & security)\n"
-        + "usage: ooapparmor [options] [ARGUMENTS]...\n\n"
-        + "Generates and loads AppArmor security profiles for individual utilities.\n\n"
-        + "Options:\n"
-        + "  -h, --help           display this help and exit\n"
-        + "  -v, --version        output version information and exit\n"
-        + "      --json           output formatted as JSON Lines\n"
-        + "      --color <WHEN>   colorize output: auto, always, never [default: auto]\n"
-        + "      --theme <NAME>   override active oote palette\n"
-        + "      --mcp            run as Model Context Protocol stdio server\n";
+    return "Usage: ooapparmor [COMMAND] [ARGS...] [OPTIONS]\n\n" +
+        "Generates and loads AppArmor security profiles for individual utilities.\n\n" +
+        "Commands:\n" +
+        "  generate <TOOL>        Generate AppArmor profile from capability declaration\n" +
+        "  verify <FILE>          Audit profile syntax and negative-trust containment\n" +
+        "  list                   List sovereign tool profile catalog\n\n" +
+        "Options:\n" +
+        "      --caps <LIST>      Declared capability tokens (e.g. FsRead,Process,Env,Mcp)\n" +
+        "      --bin <PATH>       Target binary executable path [default: /usr/bin/<tool>]\n" +
+        "      --json             Output results formatted as JSON Lines\n" +
+        "      --mcp              Run as Model Context Protocol stdio server\n" +
+        "  -h, --help             Display this help and exit\n" +
+        "  -v, --version          Output version information and exit\n";
 }
 
-fn render_version() -> String {
-    return "ooapparmor 0.1.0 (openOODA sovereign agent & security)\n";
+fn read_all_stdin(fs: &FsReadCap) -> String {
+    let mut buf: String = "";
+    let mut running: Bool = true;
+    while running {
+        let chunk_res: Result[String, String] = oo_read_stdin_chunk(fs, 4096);
+        if !chunk_res.is_ok() {
+            running = false;
+        } else {
+            let chunk: String = match chunk_res { Ok(s) => s, Err(_) => "" };
+            if chars_len(chunk) == 0 {
+                running = false;
+            } else {
+                buf = buf + chunk;
+            }
+        }
+    }
+    return buf;
 }
 
-fn main(args: List[String]) -> Int {
-    let num_args: Int = list_len(args);
-    let mut i: Int = 0;
+pub fn main(
+    fs: &FsReadCap,
+    proc_cap: &ProcessCap,
+    env: &EnvCap,
+    args: List[String]
+) -> Result[Int, String] {
+    let opts: AppArmorOpts = parse_apparmor_args(args);
 
-    while i < num_args {
-        let arg: String = list_get(args, i);
-        if arg == "-h" || arg == "--help" {
-            print(render_help());
-            return 0;
-        }
-        if arg == "-v" || arg == "--version" {
-            print(render_version());
-            return 0;
-        }
-        if arg == "--mcp" {
-            print("{\"jsonrpc\":\"2.0\",\"result\":{\"status\":\"ready\",\"tool\":\"ooapparmor\"}}\n");
-            return 0;
-        }
-        i = i + 1;
+    if opts.help_mode {
+        print(render_help());
+        return Ok(0);
+    }
+    if opts.version_mode {
+        println("ooapparmor 0.2.0 (openOODA sovereign security & confinement)");
+        return Ok(0);
+    }
+    if opts.mcp_mode {
+        run_mcp_server(fs);
+        return Ok(0);
     }
 
-    print("ooapparmor: sovereign capability-bounded utility ready\n");
-    return 0;
+    if opts.action == "" {
+        print(render_help());
+        return Ok(0);
+    }
+
+    if opts.action == "generate" {
+        if opts.tool_name == "" {
+            println("ooapparmor: error: specify tool name to generate profile");
+            process_exit(1);
+            return Ok(1);
+        }
+        let profile: String = generate_profile(opts.tool_name, opts.bin_path, opts.caps_str);
+        if opts.json_mode {
+            println("{\"tool\":\"" + json_escape(opts.tool_name) + "\",\"profile\":\"" + json_escape(profile) + "\"}");
+        } else {
+            print(profile);
+        }
+        return Ok(0);
+    }
+
+    if opts.action == "verify" {
+        let content: String = if opts.tool_name == "-" || opts.tool_name == "" {
+            read_all_stdin(fs)
+        } else {
+            let r: Result[String, String] = read_file(fs, opts.tool_name);
+            match r { Ok(s) => s, Err(_) => opts.tool_name }
+        };
+
+        let audit: AuditResult = audit_profile(content);
+        if opts.json_mode {
+            let j: String = "{\"valid\":" + (if audit.is_valid { "true" } else { "false" })
+                + ",\"enforce\":" + (if audit.enforce_mode { "true" } else { "false" })
+                + ",\"net_denied\":" + (if audit.network_denied { "true" } else { "false" })
+                + ",\"rules\":" + to_string(audit.rule_count) + "}";
+            println(j);
+        } else {
+            println(style_audit_line("Valid Profile", if audit.is_valid { "YES" } else { "NO" }, audit.is_valid));
+            println(style_audit_line("Enforce Flags", if audit.enforce_mode { "YES" } else { "NO" }, audit.enforce_mode));
+            println(style_audit_line("Network Denied", if audit.network_denied { "YES" } else { "NO" }, audit.network_denied));
+            println("Rules Count: " + to_string(audit.rule_count));
+        }
+        if !audit.is_valid {
+            process_exit(1);
+            return Ok(1);
+        }
+        return Ok(0);
+    }
+
+    if opts.action == "list" {
+        let list_str: String = "oo7z\nooalias\nooansi\nooapparmor\noocat\nooclock\noocurl\noodiff\noofetch\noofind\noofzf\noogrep\noojq\nools\noomcp\noops\noosed\noosh\nootail\nootar\noote\nootop\nootree\noowatch\n";
+        print(list_str);
+        return Ok(0);
+    }
+
+    print(render_help());
+    return Ok(0);
 }

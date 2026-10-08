@@ -1,0 +1,12 @@
+// # ooapparmor Core Subsystem Anchor
+//
+// Logline: Re-exports AppArmor profile generator and security validator primitives.
+//
+// Setup: Pure shim re-exporting core confinement components.
+//
+// Beats:
+//   1. Re-export generate_profile routine.
+//   2. Re-export audit_profile and AuditResult models.
+
+import "profile_gen.oo";
+import "validator.oo";
